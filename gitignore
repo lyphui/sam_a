@@ -1,0 +1,6 @@
+*.pth
+*/__pycache__/*
+*/.ipynb_checkpoints/*
+*.pyc
+save/
+mmcv/
