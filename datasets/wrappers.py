@@ -131,7 +131,6 @@ class ValDataset_padsquare(Dataset):
         self.img_transform = transforms.Compose([
             transforms.Resize(self.inp_size),
             transforms.ToTensor(),
-            transforms.ColorJitter(brightness=.2, contrast=.1, saturation=0.1),
             transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225])
         ])
@@ -181,6 +180,7 @@ class TrainDataset_padsquare(Dataset):
         self.img_transform = transforms.Compose([
             transforms.Resize(self.inp_size),
             transforms.ToTensor(),
+            transforms.ColorJitter(brightness=.2, contrast=.1, saturation=0.1),
             transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225])
         ])
