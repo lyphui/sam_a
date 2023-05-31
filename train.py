@@ -288,7 +288,7 @@ def main(config_, save_path, args):
     
     
     log(config['finetune_mode']+' finetuning...')
-    assert config['finetune_mode'] in ['fullfinetune','evp','lp'],f"{config['finetune_mode']} is not a valid ft_mode"
+    assert config['finetune_mode'] in ['fullfinetune','evp','lp','adaptor'],f"{config['finetune_mode']} is not a valid ft_mode"
 
     if config['finetune_mode']=='evp':
         for name, para in model.named_parameters():
