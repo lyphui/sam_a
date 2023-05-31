@@ -11,6 +11,8 @@ import torch.nn.functional as F
 import pdb
 from typing import Optional, Tuple, Type
 
+from timm.models.layers import trunc_normal_
+from easydict import EasyDict
 from .common import LayerNorm2d, MLPBlock
 import math
 import warnings
@@ -24,11 +26,73 @@ else:
     import collections.abc as container_abcs
 
 
-# This class and its supporting functions below lightly adapted from the ViTDet backbone available at: https://github.com/facebookresearch/detectron2/blob/main/detectron2/modeling/backbone/vit.py # noqa
+class Adapter(nn.Module):
+    def __init__(self,
+                 config=None,
+                 d_model=None,
+                 bottleneck=None,
+                 dropout=0.0,
+                 init_option="bert",
+                 adapter_scalar="1.0",
+                 adapter_layernorm_option="in"):
+        super().__init__()
+        self.n_embd = config.d_model if d_model is None else d_model
+        self.down_size = config.attn_bn if bottleneck is None else bottleneck
+
+        # _before
+        self.adapter_layernorm_option = adapter_layernorm_option
+
+        self.adapter_layer_norm_before = None
+        if adapter_layernorm_option == "in" or adapter_layernorm_option == "out":
+            self.adapter_layer_norm_before = nn.LayerNorm(self.n_embd)
+
+        if adapter_scalar == "learnable_scalar":
+            self.scale = nn.Parameter(torch.ones(1))
+        else:
+            self.scale = float(adapter_scalar)
+
+        self.down_proj = nn.Linear(self.n_embd, self.down_size)
+        self.non_linear_func = nn.ReLU()
+        self.up_proj = nn.Linear(self.down_size, self.n_embd)
+
+        self.dropout = dropout
+        if init_option == "bert":
+            raise NotImplementedError
+        elif init_option == "lora":
+            with torch.no_grad():
+                nn.init.kaiming_uniform_(self.down_proj.weight, a=math.sqrt(5))
+                nn.init.zeros_(self.up_proj.weight)
+                nn.init.zeros_(self.down_proj.bias)
+                nn.init.zeros_(self.up_proj.bias)
+
+    def forward(self, x, add_residual=True, residual=None):
+        residual = x if residual is None else residual
+        if self.adapter_layernorm_option == 'in':
+            x = self.adapter_layer_norm_before(x)
+
+        down = self.down_proj(x)
+        down = self.non_linear_func(down)
+        down = nn.functional.dropout(down, p=self.dropout, training=self.training)
+        up = self.up_proj(down)
+
+        up = up * self.scale
+
+        if self.adapter_layernorm_option == 'out':
+            up = self.adapter_layer_norm_before(up)
+
+        if add_residual:
+            output = up + residual
+        else:
+            output = up
+
+        return output
+
+
 class ImageEncoderViT(nn.Module):
     def __init__(
             self,
             img_size,
+            ffn_num=4,
             patch_size: int = 16,
             in_chans: int = 3,
             embed_dim: int = 768,
@@ -81,6 +145,16 @@ class ImageEncoderViT(nn.Module):
                 torch.zeros(1, img_size[0] // patch_size, img_size[1] // patch_size, embed_dim)
             )
 
+        tuning_config = EasyDict(
+            # AdaptFormer
+            ffn_option="parallel",
+            ffn_adapter_layernorm_option="none",
+            ffn_adapter_init_option="lora",
+            ffn_adapter_scalar="0.1",
+            ffn_num=ffn_num,
+            d_model=embed_dim
+        )
+
         self.blocks = nn.ModuleList()
         for i in range(depth):
             block = Block(
@@ -94,6 +168,7 @@ class ImageEncoderViT(nn.Module):
                 rel_pos_zero_init=rel_pos_zero_init,
                 window_size=window_size if i not in global_attn_indexes else 0,
                 input_size=(img_size[0] // patch_size, img_size[1] // patch_size),
+                tuning_config=tuning_config
             )
             self.blocks.append(block)
 
@@ -145,6 +220,7 @@ class Block(nn.Module):
             rel_pos_zero_init: bool = True,
             window_size: int = 0,
             input_size: Optional[Tuple[int, int]] = None,
+            tuning_config=None
     ) -> None:
         """
         Args:
@@ -177,6 +253,13 @@ class Block(nn.Module):
 
         self.window_size = window_size
 
+        self.tuning_config = tuning_config
+        self.adaptmlp = Adapter(self.config, bottleneck=tuning_config.ffn_num,
+                                init_option=tuning_config.ffn_adapter_init_option,
+                                adapter_scalar=tuning_config.ffn_adapter_scalar,
+                                adapter_layernorm_option=tuning_config.ffn_adapter_layernorm_option,
+                                )
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         shortcut = x
         x = self.norm1(x)
@@ -191,10 +274,7 @@ class Block(nn.Module):
             x = window_unpartition(x, self.window_size, pad_hw, (H, W))
 
         x = shortcut + x
-
-        adapt_x = self.adaptmlp(x, add_residual=False)
         x = x + self.mlp(self.norm2(x))
-        x = x + adapt_x
 
         return x
 
