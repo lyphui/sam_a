@@ -289,8 +289,8 @@ def main(config_, save_path, args):
     
     log(config['finetune_mode']+' finetuning...')
     assert config['finetune_mode'] in ['fullfinetune','evp','lp'],f"{config['finetune_mode']} is not a valid ft_mode"
-    if config['finetune_mode']=='evp': 
-        
+
+    if config['finetune_mode']=='evp':
         for name, para in model.named_parameters():
             if "image_encoder" in name and "prompt_generator" not in name:
                 para.requires_grad_(False)
@@ -301,18 +301,37 @@ def main(config_, save_path, args):
                 if para.shape != pretrained_state_dict[name].shape:
                     para.requires_grad_(True)
                     log(f"finetune reshaped '{name}' module...")
-    
+
+    elif config['finetune_mode'] == 'lp':
+        for name, para in model.named_parameters():
+            if "image_encoder" in name or 'no_mask_embed' in name:
+                para.requires_grad_(False)
+        pretrained_state_dict = torch.load(config['sam_checkpoint'])
+        for name, para in model.named_parameters():
+            if name in pretrained_state_dict:
+                if para.shape != pretrained_state_dict[name].shape:
+                    para.requires_grad_(True)
+                    log(f"finetune reshaped '{name}' module...")
+
+    elif config['finetune_mode'] == 'adaptor':
+        for name, para in model.named_parameters():
+            print(name,para.shape)
+            if ("image_encoder" in name and "adaptmlp" not in name) or 'no_mask_embed' in name:
+                para.requires_grad_(False)
+        pretrained_state_dict = torch.load(config['sam_checkpoint'])
+        for name, para in model.named_parameters():
+            if name in pretrained_state_dict:
+                if para.shape != pretrained_state_dict[name].shape:
+                    para.requires_grad_(True)
+                    log(f"finetune reshaped '{name}' module...")
+
     if local_rank == 0:
         model_total_params = sum(p.numel() for p in model.parameters())
         model_grad_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         log('model_grad_params:' + str(model_grad_params)+'; model_total_params:' + str(model_total_params))
         
     train_loader, val_loader = make_data_loaders()
-    if config.get('data_norm') is None:
-        config['data_norm'] = {
-            'inp': {'sub': [0], 'div': [1]},
-            'gt': {'sub': [0], 'div': [1]}
-        }
+
     epoch_max = config['epoch_max']
     epoch_val = config.get('epoch_val')
     max_val_v = -1e18 if config['eval_type'] != 'ber' else 1e8
@@ -438,6 +457,6 @@ if __name__ == '__main__':
         save_name += '_' + args.tag
     if config['load_mode']=='sfs':
         config['finetune_mode']='fullfinetune'
-    save_path = os.path.join('./save', save_name, config['load_mode']+'_'+config['finetune_mode'])
+    save_path = os.path.join('./save', save_name+'_'+config['load_mode']+'_'+config['finetune_mode'])
     os.makedirs(save_path,exist_ok=True)
     main(config, save_path, args=args)

@@ -135,13 +135,6 @@ class SAM(nn.Module):
             iou_head_hidden_dim=256,
         )
 
-#         if 'evp' in encoder_mode['name']:
-#             for k, p in self.encoder.named_parameters():
-#                 if "prompt" not in k and "mask_decoder" not in k and "prompt_encoder" not in k:
-#                     p.requires_grad = False
-
-
-
         self.loss_mode = loss
         if self.loss_mode == 'bce':
             self.criterionBCE = torch.nn.BCEWithLogitsLoss()
