@@ -131,6 +131,7 @@ class ValDataset_padsquare(Dataset):
         self.img_transform = transforms.Compose([
             transforms.Resize(self.inp_size),
             transforms.ToTensor(),
+            transforms.ColorJitter(brightness=.2, contrast=.1, saturation=0.1),
             transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225])
         ])
@@ -201,8 +202,6 @@ class TrainDataset_padsquare(Dataset):
     def __getitem__(self, idx):
         img, mask = self.dataset[idx]
 
-        img, mask = self.dataset[idx]
-
         w, h = img.size
         assert w>=h,'shape not align w={} h={}'.format(w,h)
 #         print('bf pad-----------', img.size, mask.size)
@@ -217,6 +216,9 @@ class TrainDataset_padsquare(Dataset):
         if random.random() < 0.5:
             img = img.transpose(Image.FLIP_LEFT_RIGHT)
             mask = mask.transpose(Image.FLIP_LEFT_RIGHT)
+        if random.random() < 0.5:
+            img = img.transpose(Image.FLIP_TOP_BOTTOM)
+            mask = mask.transpose(Image.FLIP_TOP_BOTTOM)
         return {
             'inp': self.img_transform(img),
             'gt': self.mask_transform(mask)
