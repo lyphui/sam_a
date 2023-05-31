@@ -4,3 +4,4 @@
 *.pyc
 save/
 mmcv/
+data/

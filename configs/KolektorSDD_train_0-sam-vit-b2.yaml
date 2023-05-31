@@ -2,11 +2,12 @@ train_dataset:
   dataset:
     name: paired-glue-image-list
     args:
-      csv_path: /dfs/data/PFENet/lists/exp/train_1027.csv
+      csv_path: ./data/KolektorSDD_train_2.csv
+      suffix: _label.bmp
   wrapper:
-    name: train
+    name: train_padsquare
     args:
-      inp_size: [2640,368]
+      inp_size: 1024
       augment: false
   batch_size: 2
   shuffle: true
@@ -15,11 +16,12 @@ val_dataset:
   dataset:
     name: paired-glue-image-list
     args:
-      csv_path:  /dfs/data/PFENet/lists/exp/val_1027.csv
+      csv_path:  ./data/KolektorSDD_test_2.csv
+      suffix: _label.bmp
   wrapper:
-    name: val
+    name: val_padsquare
     args:
-      inp_size: [2640,368]
+      inp_size: 1024
   batch_size: 2
   shuffle: false
 
@@ -27,11 +29,11 @@ test_dataset:
   dataset:
     name: paired-glue-image-list
     args:
-      csv_path:  /dfs/data/PFENet/lists/exp/val_1027.csv
+      csv_path:  ./data/KolektorSDD_test_2.csv
   wrapper:
-    name: val
+    name: val_padsquare
     args:
-      inp_size: [2640,368]
+      inp_size: 1024
   batch_size: 1
 
 eval_type: iou
@@ -55,11 +57,11 @@ data_norm:
 model:
   name: sam
   args:
-    inp_size: [2640,368]
+    inp_size: 1024
     loss: iou
     encoder_mode:
       name: sam
-      img_size: [2640,368]
+      img_size: 1024
       mlp_ratio: 4
       patch_size: 16
       qkv_bias: true
@@ -87,7 +89,7 @@ model:
 optimizer:
   name: adamw
   args:
-    lr: 0.0002
+    lr: 0.0001
 lr_min: 1.0e-7
 epoch_max: 100
 load_mode: resize_load

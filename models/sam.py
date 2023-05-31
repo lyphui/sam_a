@@ -264,7 +264,8 @@ class SAM(nn.Module):
     def optimize_parameters(self):
         self.forward()
         self.optimizer.zero_grad()  # set G's gradients to zero
-        self.backward_G()  # calculate graidents for G
+        self.backward_G()  # calculate graidents for G 
+#         nn.utils.clip_grad_value_(self.parameters(), 3)
         self.optimizer.step()  # udpate G's weights
 
     def set_requires_grad(self, nets, requires_grad=False):

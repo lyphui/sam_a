@@ -93,7 +93,7 @@ import pandas as pd
 @register('glue-image-list')
 class ImageList(Dataset):
     def __init__(self, path, 
-                 repeat=1, mask=False):
+                 repeat=1, mask=False,suffix='.png'):
         self.repeat = repeat
         self.path = path
         self.mask = mask
@@ -103,7 +103,7 @@ class ImageList(Dataset):
         image_path_list = list(pd_data['img_pth'])
         
         if self.mask:
-            self.files = [i.replace('.jpg','.png') for i in image_path_list]
+            self.files = [i.replace('.jpg',suffix) for i in image_path_list]
         else:
             self.files=image_path_list
             

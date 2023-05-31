@@ -120,7 +120,8 @@ class ImageEncoderViT(nn.Module):
         self.tuning_stage = 1234
         self.input_type = 'fft'
         self.freq_nums = 0.25
-        self.handcrafted_tune = True
+#         self.handcrafted_tune = True
+        self.handcrafted_tune = False
         self.embedding_tune = True
         self.adaptor = 'adaptor'
         self.prompt_generator = PromptGenerator(self.scale_factor, self.prompt_type, self.embed_dim,

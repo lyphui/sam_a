@@ -28,6 +28,7 @@ def make_data_loader(spec, tag=''):
     dataset = datasets.make(spec['dataset'])
     dataset = datasets.make(spec['wrapper'], args={'dataset': dataset})
     if local_rank == 0:
+        log('load from data path {}'.format(spec['dataset']['args']['csv_path']))
         log('{} dataset: size={}'.format(tag, len(dataset)))
         for k, v in dataset[0].items():
             log('  {}: shape={}'.format(k, tuple(v.shape)))
@@ -140,6 +141,7 @@ def eval_iou(loader, model, eval_type=None):
             
     iou_class = intersection_meter.sum / (union_meter.sum + 1e-10)
     accuracy_class = intersection_meter.sum / (target_meter.sum + 1e-10)
+    mIoU1 = iou_class[1]
     mIoU = np.mean(iou_class)
     mAcc = np.mean(accuracy_class)
     allAcc = sum(intersection_meter.sum) / (sum(target_meter.sum) + 1e-10)
@@ -151,7 +153,7 @@ def eval_iou(loader, model, eval_type=None):
         pbar.close()
 
 
-    return  mIoU, mAcc, allAcc,recall,precision, 'mIoU', 'mAcc', 'allAcc','recall','precision'
+    return  mIoU, mIoU1, mAcc, allAcc,recall,precision, 'mIoU','mIoU1',  'mAcc', 'allAcc','recall','precision'
 
 
 
@@ -190,6 +192,12 @@ def train(train_loader, model):
         inp = batch['inp']
         gt = batch['gt']
         model.set_input(inp, gt)
+        
+#         for name, para in model.named_parameters():
+#             if para.requires_grad:
+#                 print(name)
+#                 print(torch.mean(torch.abs(para)))
+        nn.utils.clip_grad_value_(model.parameters(), 3)
         model.optimize_parameters()
         batch_loss = [torch.zeros_like(model.loss_G) for _ in range(dist.get_world_size())]
         dist.all_gather(batch_loss, model.loss_G)
@@ -280,11 +288,19 @@ def main(config_, save_path, args):
     
     
     log(config['finetune_mode']+' finetuning...')
-    assert config['finetune_mode'] in ['fullfinetune','evp'],f"{config['finetune_mode']} is not a valid ft_mode"
+    assert config['finetune_mode'] in ['fullfinetune','evp','lp'],f"{config['finetune_mode']} is not a valid ft_mode"
     if config['finetune_mode']=='evp': 
+        
         for name, para in model.named_parameters():
             if "image_encoder" in name and "prompt_generator" not in name:
                 para.requires_grad_(False)
+                
+        pretrained_state_dict = torch.load(config['sam_checkpoint'])
+        for name, para in model.named_parameters():
+            if name in pretrained_state_dict:
+                if para.shape != pretrained_state_dict[name].shape:
+                    para.requires_grad_(True)
+                    log(f"finetune reshaped '{name}' module...")
     
     if local_rank == 0:
         model_total_params = sum(p.numel() for p in model.parameters())
@@ -311,6 +327,7 @@ def main(config_, save_path, args):
         train_loader.sampler.set_epoch(epoch)
         t_epoch_start = timer.t()
         train_loss_G = train(train_loader, model)
+        
         lr_scheduler.step()
 
         if local_rank == 0:
@@ -328,7 +345,7 @@ def main(config_, save_path, args):
 
         if (epoch_val is not None) and (epoch % epoch_val == 0):
             if config.get('eval_type')=='iou': # mIoU, mAcc, allAcc,recall,precision, 'mIoU', 'mAcc', 'allAcc','recall','precision'
-                result1, result2, result3, result4, result5, metric1, metric2, metric3, metric4, metric5 = eval_iou(val_loader, model, eval_type=config.get('eval_type'))
+                result1, result2, result3, result4, result5, result6,metric1, metric2, metric3, metric4, metric5,metric6 = eval_iou(val_loader, model, eval_type=config.get('eval_type'))
                 if local_rank == 0:
                     log_info.append('val: {}={:.4f}'.format(metric1, result1))
                     writer.add_scalars(metric1, {'val': result1}, epoch)
@@ -340,6 +357,8 @@ def main(config_, save_path, args):
                     writer.add_scalars(metric4, {'val': result4}, epoch)
                     log_info.append('val: {}={:.4f}'.format(metric5, result5))
                     writer.add_scalars(metric4, {'val': result5}, epoch)
+                    log_info.append('val: {}={:.4f}'.format(metric6, result6))
+                    writer.add_scalars(metric4, {'val': result6}, epoch)
 
                     if result1 > max_val_v:
                         max_val_v = result1
